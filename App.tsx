@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { TOOLS, ToolType, PdfFile } from './types';
+import { TOOLS, ToolType, PdfFile } from './types.ts';
 import {
   FileText, Merge, Split, Minimize2, Lock, Unlock, RotateCw, Grid, Image, Code, Stamp, 
   Home, ChevronRight, Download, ArrowRight, Upload, X, CheckCircle, AlertTriangle, Sun, Moon,
@@ -146,7 +146,7 @@ import {
   mergePdfs, rotatePdf, protectPdf, unlockPdf, createPdfFromImages, 
   readFileAsArrayBuffer, organizePdf, compressPdf, watermarkPdf,
   generatePdfThumbnails, checkPdfPassword, convertHtmlToPdf
-} from './utils/pdfUtils';
+} from './utils/pdfUtils.ts';
 import { PDFDocument } from 'pdf-lib';
 import jsPDF from 'jspdf';
 
@@ -223,10 +223,10 @@ const ToolPage: React.FC = () => {
     }
   }, [toolId]);
 
-  // Set default filename when files change
+  // Ensure filename is set if files exist (fix for rotate/organize feedback)
   useEffect(() => {
     if (files.length > 0 && !customFileName) {
-        let baseName = files[0].name.replace('.pdf', '');
+        let baseName = files[0].name.replace(/\.[^/.]+$/, ""); // Remove extension
         if (toolId === ToolType.Merge) baseName = 'merged';
         else if (toolId === ToolType.ImageToPdf) baseName = 'images';
         setCustomFileName(baseName + '_processed');
@@ -328,13 +328,13 @@ const ToolPage: React.FC = () => {
         // Pass both new password and (optional) input file password
         outputBytes = await protectPdf(bytes, password, inputPassword);
       } else if (toolId === ToolType.Unlock) {
-        if (!password) {
-            alert("Please enter the password to unlock the file.");
-            setIsProcessing(false);
-            return;
-        }
+        // Unlock doesn't strictly need a password if the file isn't encrypted, but if it is, 
+        // the user typically provides it. However, if they want to REMOVE encryption 
+        // from a file they opened (maybe with inputPassword), we use that.
+        // If the tool prompts for password, use that.
+        const passToUse = password || inputPassword;
         const bytes = await readFileAsArrayBuffer(files[0]);
-        outputBytes = await unlockPdf(bytes, password);
+        outputBytes = await unlockPdf(bytes, passToUse);
       } else if (toolId === ToolType.Rotate) {
         const bytes = await readFileAsArrayBuffer(files[0]);
         outputBytes = await rotatePdf(bytes, rotation, inputPassword);
@@ -380,7 +380,8 @@ const ToolPage: React.FC = () => {
         const response = await fetch(proxyUrl);
         if (!response.ok) throw new Error("Could not fetch website content.");
         const text = await response.text();
-        const pdfBytes = await convertHtmlToPdf(text);
+        // Pass the original URL to resolve relative paths
+        const pdfBytes = await convertHtmlToPdf(text, htmlUrl);
         finishProcessing(pdfBytes, fileName);
     } catch (e) {
         alert("Error converting HTML: " + (e as Error).message);
@@ -594,6 +595,7 @@ const ToolPage: React.FC = () => {
                     {toolId === ToolType.Unlock && (
                         <div>
                              <label className={`block mb-2 ${labelClass}`}>Enter Password to Unlock</label>
+                             <p className="text-xs text-slate-500 mb-2">If the file was already unlocked above, leave this blank or re-enter if needed.</p>
                             <input
                             type="password"
                             value={password}
@@ -684,7 +686,7 @@ const ToolPage: React.FC = () => {
             {toolId === ToolType.HtmlToPdf && (
                  <div className="space-y-4">
                      <div>
-                        <label className={`block mb-2 ${labelClass}`}>Website URL</label>
+                        <label className={`block mb-2 ${labelClass}`}>Website URL (e.g., https://example.com)</label>
                         <input
                         type="url"
                         value={htmlUrl}

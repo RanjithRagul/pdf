@@ -262,17 +262,9 @@ export const protectPdf = async (pdfBytes: Uint8Array, password: string, oldPass
 };
 
 export const unlockPdf = async (pdfBytes: Uint8Array, password: string): Promise<Uint8Array> => {
-  try {
-      // Try standard unlock
-      const pdfDoc = await loadPdf(pdfBytes, password);
-      return await pdfDoc.save();
-  } catch (e: any) {
-      // If standard load fails due to R6 encryption but password is correct
-      if (e.message && e.message.includes("editing engine")) {
-          return await rasterizePdf(pdfBytes, password);
-      }
-      throw e;
-  }
+  // Use getCleanPdfBytes to ensure a completely fresh PDF structure without encryption dictionary
+  // This effectively removes the password.
+  return await getCleanPdfBytes(pdfBytes, password);
 };
 
 export const compressPdf = async (pdfBytes: Uint8Array, password?: string): Promise<Uint8Array> => {
@@ -280,7 +272,7 @@ export const compressPdf = async (pdfBytes: Uint8Array, password?: string): Prom
   return await pdfDoc.save({ useObjectStreams: false });
 };
 
-export const convertHtmlToPdf = async (html: string): Promise<Uint8Array> => {
+export const convertHtmlToPdf = async (html: string, baseUrl?: string): Promise<Uint8Array> => {
     // Create an isolated iframe to render HTML
     const iframe = document.createElement("iframe");
     Object.assign(iframe.style, {
@@ -304,6 +296,7 @@ export const convertHtmlToPdf = async (html: string): Promise<Uint8Array> => {
             <!DOCTYPE html>
             <html>
               <head>
+                ${baseUrl ? `<base href="${baseUrl}" />` : ''}
                 <style>
                   body { width: ${pageWidthPx}px; margin: 0; padding: 20px; font-family: sans-serif; background: #fff; }
                   * { box-sizing: border-box; }
